@@ -8,6 +8,7 @@ import path from 'path';
 import { create } from 'fancy-progress';
 import os from 'os';
 import proxy from 'superagent-proxy';
+import { log } from "console";
 
 const report1 = create('* Total', 'green');
 const report2 = create('Problem', 'red');
@@ -25,6 +26,9 @@ const LanguageMap = {
     cpp: 'cc',
 };
 const RE_SYZOJ = /(https?):\/\/([^/]+)\/(problem|p)\/([0-9]+)\/?/i;
+const IMG_MD = /!\[.*?\]\((.*?)\)/gi;
+const IMG_HTML = /^https?:\/\/(.+\/)+.+(\.(gif|png|jpg|jpeg|webp|svg|psd|bmp|tif))$/g;
+const IMG_BASE64 = /^\s*data:(?:[a-z]+\/[a-z0-9-+.]+(?:;[a-z-]+=[a-z0-9-]+)?)?(?:;base64)?,([a-z0-9!$&',()*+;=\-._~:@/?%\s]*?)\s*$/g;
 
 async function _download(url: string, path: string, retry: number) {
     if (fs.existsSync(path)) fs.unlinkSync(path);
@@ -35,7 +39,8 @@ async function _download(url: string, path: string, retry: number) {
         w.on('finish', resolve);
         w.on('error', reject);
         req.on('error', reject);
-        req.on('timeout', reject);
+        // req.on('timeout', reject);
+        req.on('timeout', (event) => {console.log(`${url}下载超时。`)})
     });
     return path;
 }
@@ -178,8 +183,37 @@ ${result.body.samples[section.sampleId].outputData}
 
 `;
             } else {
-                content += '## ' + section.sectionTitle + '\n';
-                content += '\n' + section.text + '\n\n';
+                content += '## ' + section.sectionTitle + '\n';                
+                
+                // TODO: LOJ6610,4175有图片,LOJ4174多图
+                const img_urls = extractImageUrlsMD(section.text);
+                let newContent = section.text;
+                for(const url of img_urls){
+                    let img = extractFileNameAndExtensionFromUrl(url);
+                    newContent = newContent.replace(new RegExp(url, 'g'), `file://${img?.fileName}.${img?.extension}`);
+                    try {
+                        const filepath = `additional_file/${img?.fileName}.${img?.extension}`;
+                        // if (fs.existsSync('downloads/' + host + '/' + pid + '/' + filepath)) {
+                        //     const size = fs.statSync('downloads/' + host + '/' + pid + '/' + filepath).size;
+                        //     if (size === expectedSize) {
+                        //         downloadedSize += size;
+                        //         downloadedCount++;
+                        //         return;
+                        //     }else console.log(filepath,size,expectedSize);
+                        // }
+                        await downloadFile(url, write(filepath));
+                        // downloadedSize += expectedSize;
+                        // downloadedCount++;
+                        // report2.update(downloadedSize / totalSize, `(${size(downloadedSize)}/${size(totalSize)}) ` + name + ' (' + (downloadedCount + 1) + '/' + totalCount + ')');
+                    } catch (e) {
+                        console.error(e)
+                        // err = e;
+                    }
+                }       
+                
+
+
+                content += '\n' + newContent + '\n\n';
             }
         }
         let locale = c.locale;
@@ -302,6 +336,30 @@ ${result.body.samples[section.sampleId].outputData}
     report2.update(downloadedSize / totalSize, '');
 }
 
+function extractImageUrlsMD(text: any) {
+    const urls: Set<string> = new Set();
+    // 在 markdownText中查找 所有匹配的图片链接
+    let match: string[]|null;
+    while ((match = IMG_MD.exec(text))) {
+        urls.add(match[1]);
+    }
+    return urls;
+}
+
+function extractFileNameAndExtensionFromUrl(url: string): { fileName: string, extension: string } | null {
+    const regex = /^.*\/(.*)\.(.*)$/; // 匹配最后一个斜线后的文件名和后缀名
+    const match = url.match(regex);
+ 
+    if (match) {
+        return {
+            fileName: match[1], // 文件名
+            extension: match[2] // 后缀名
+        };
+    } else {
+        return null;
+    }
+}
+ 
 async function run(url: string) {
     if (/^(.+)\/(\d+)\.\.(\d+)$/.test(url)) {
         const res = /^(.+)\/(\d+)\.\.(\d+)$/.exec(url)!;

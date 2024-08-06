@@ -21,6 +21,7 @@
     "lodash": "^4.17.21",
     "p-queue": "^7.3.4",
     "superagent": "^7.1.1",
-    "superagent-proxy": "^3.0.0"
+    "superagent-proxy": "^3.0.0",
+    "uuid": "^10.0.0"
   }
 }
